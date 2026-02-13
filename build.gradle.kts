@@ -1,92 +1,98 @@
 import xyz.jpenilla.resourcefactory.bukkit.BukkitPluginYaml
+import java.util.*
 
 plugins {
   `java-library`
   id("io.papermc.paperweight.userdev") version "2.0.0-beta.19"
-  id("xyz.jpenilla.run-paper") version "3.0.2" // Adds runServer and runMojangMappedServer tasks for testing
+  id("xyz.jpenilla.run-paper") version "3.0.2"
   id("xyz.jpenilla.resource-factory-bukkit-convention") version "1.3.0"
-  `maven-publish` // 👈 新增：启用发布功能 
+  `maven-publish`
 }
 
+// === 版本策略：CI 中优先使用 -Pversion，本地开发用 SNAPSHOT ===
+val gitTag: String? = try {
+  ProcessBuilder("git", "describe", "--tags", "--exact-match")
+    .redirectOutput(ProcessBuilder.Redirect.PIPE)
+    .redirectError(ProcessBuilder.Redirect.DISCARD)
+    .start()
+    .inputStream
+    .bufferedReader()
+    .readText()
+    .trim()
+    .replace(Regex("^v"), "")
+} catch (e: Exception) {
+  null
+}
+
+version = project.findProperty("version")?.toString() // 优先：-Pversion
+  ?: System.getenv("VERSION")
+  ?: gitTag
+  ?: "1.0.0-SNAPSHOT" // 本地开发默认值
+
 group = "top.rainmc.testplugin"
-version = "1.0.0-SNAPSHOT"
 description = "Test plugin for paperweight-userdev"
 
 java {
-  // Configure the java toolchain. This allows gradle to auto-provision JDK 21 on systems that only have JDK 11 installed for example.
   toolchain.languageVersion = JavaLanguageVersion.of(21)
 }
 
-// For 1.20.4 or below, or when you care about supporting Spigot on >=1.20.5:
-/*
-paperweight.reobfArtifactConfiguration = io.papermc.paperweight.userdev.ReobfArtifactConfiguration.REOBF_PRODUCTION
-
-tasks.assemble {
-  dependsOn(tasks.reobfJar)
-}
- */
-
 dependencies {
   paperweight.paperDevBundle("1.21.10-R0.1-SNAPSHOT")
-  // paperweight.foliaDevBundle("1.21.10-R0.1-SNAPSHOT")
-  // paperweight.devBundle("com.example.paperfork", "1.21.10-R0.1-SNAPSHOT")
 }
 
 tasks {
   compileJava {
-    // Set the release flag. This configures what version bytecode the compiler will emit, as well as what JDK APIs are usable.
-    // See https://openjdk.java.net/jeps/247 for more information.
     options.release = 21
+    options.encoding = Charsets.UTF_8.name()
   }
   javadoc {
-    options.encoding = Charsets.UTF_8.name() // We want UTF-8 for everything
+    options.encoding = Charsets.UTF_8.name()
   }
 
-  // Only relevant for 1.20.4 or below, or when you care about supporting Spigot on >=1.20.5:
-  /*
-  reobfJar {
-    // This is an example of how you might change the output location for reobfJar. It's recommended not to do this
-    // for a variety of reasons, however it's asked frequently enough that an example of how to do it is included here.
-    outputJar = layout.buildDirectory.file("libs/PaperweightTestPlugin-${project.version}.jar")
+  // === 智能版本校验：允许快照格式（含提交哈希），禁止纯 SNAPSHOT ===
+  register("checkReleaseVersion") {
+    doLast {
+      val ver = project.version.toString()
+      // 允许: 1.0.0-abc123, 1.2.3-20240520.123456
+      // 禁止: 1.0.0-SNAPSHOT
+      require(!ver.contains("-SNAPSHOT", ignoreCase = true)) {
+        "❌ 禁止发布纯 SNAPSHOT 版本: $ver。请使用带提交哈希的快照格式（如 1.0.0-abc123）"
+      }
+      logger.lifecycle("✅ 版本校验通过: $ver")
+    }
   }
-   */
+
+  named("publish") {
+    dependsOn("checkReleaseVersion")
+  }
 }
 
-// Configure plugin.yml generation
-// - name, version, and description are inherited from the Gradle project.
 bukkitPluginYaml {
   main = "top.rainmc.testplugin.ExamplePlugin"
   load = BukkitPluginYaml.PluginLoadOrder.STARTUP
-  authors.add("Author")
+  authors.add("YingXingSilver")
   apiVersion = "1.21.10"
 }
-
-
-
 
 publishing {
   publications {
     create<MavenPublication>("maven") {
-      // 基础元数据（自动从 project 继承）
       groupId = project.group.toString()
       artifactId = project.name
       version = project.version.toString()
 
-      // ✅ 核心：使用重混淆后的 JAR 作为主构件（Paper 插件必需！）
-      artifact(tasks.reobfJar) {
-        classifier = "" // 无分类器 = 主构件
+      artifact(tasks.named("reobfJar").get()) {
+        classifier = ""
       }
 
-
-      // 自动生成 POM 信息
       pom {
         name = project.name
         description = project.description
-        url = "https://github.com/yingxingsilver/ExamplePlugin" // 替换为你的仓库地址
+        url = "https://github.com/yingxingsilver/ExamplePlugin" // ✅ 无空格
 
         licenses {
           license {
-            name = "GPL License"
+            name = "GNU General Public License v3.0"
             url = "https://www.gnu.org/licenses/gpl-3.0.html"
           }
         }
@@ -98,8 +104,8 @@ publishing {
           }
         }
         scm {
-          connection = "scm:git:github.com/yingxingsilver/ExamplePlugin.git"
-          developerConnection = "scm:git:ssh://github.com/yingxingsilver/ExamplePlugin.git"
+          connection = "scm:git:https://github.com/yingxingsilver/ExamplePlugin.git"
+          developerConnection = "scm:git:ssh://git@github.com:yingxingsilver/ExamplePlugin.git"
           url = "https://github.com/yingxingsilver/ExamplePlugin"
         }
       }
@@ -107,16 +113,14 @@ publishing {
   }
 
   repositories {
-
-
-    // 🚀 方案 B：发布到 GitHub Packages（生产推荐）
     maven {
       name = "GitHubPackages"
-      url = uri("https://maven.pkg.github.com/yingxingsilver/ExamplePlugin") // 替换为你的仓库
+      // ✅ 修复：移除所有 URL 尾部空格！
+      url = uri("https://maven.pkg.github.com/yingxingsilver/ExamplePlugin")
       credentials {
         username = System.getenv("GITHUB_ACTOR") ?: "yingxingsilver"
-        password = System.getenv("GITHUB_TOKEN") ?: "" // 必须在 CI 中设置 secrets.GITHUB_TOKEN
+        password = System.getenv("GITHUB_TOKEN") ?: ""
       }
     }
   }
-} 
+}
