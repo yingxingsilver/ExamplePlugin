@@ -3,8 +3,9 @@ import xyz.jpenilla.resourcefactory.bukkit.BukkitPluginYaml
 plugins {
   `java-library`
   id("io.papermc.paperweight.userdev") version "2.0.0-beta.19"
-  // id("xyz.jpenilla.run-paper") version "3.0.2" // Adds runServer and runMojangMappedServer tasks for testing
-  id("xyz.jpenilla.resource-factory-bukkit-convention") version "1.3.0" // Generates plugin.yml based on the Gradle config
+  id("xyz.jpenilla.run-paper") version "3.0.2" // Adds runServer and runMojangMappedServer tasks for testing
+  id("xyz.jpenilla.resource-factory-bukkit-convention") version "1.3.0"
+  `maven-publish` // 👈 新增：启用发布功能 
 }
 
 group = "top.rainmc.testplugin"
@@ -58,4 +59,64 @@ bukkitPluginYaml {
   load = BukkitPluginYaml.PluginLoadOrder.STARTUP
   authors.add("Author")
   apiVersion = "1.21.10"
-}
+
+
+
+
+
+publishing {
+  publications {
+    create<MavenPublication>("maven") {
+      // 基础元数据（自动从 project 继承）
+      groupId = project.group.toString()
+      artifactId = project.name
+      version = project.version.toString()
+
+      // ✅ 核心：使用重混淆后的 JAR 作为主构件（Paper 插件必需！）
+      artifact(tasks.reobfJar) {
+        classifier = "" // 无分类器 = 主构件
+      }
+
+
+      // 自动生成 POM 信息
+      pom {
+        name = project.name
+        description = project.description
+        url = "https://github.com/yingxingsilver/ExamplePlugin" // 替换为你的仓库地址
+
+        licenses {
+          license {
+            name = "GPL License"
+            url = "https://www.gnu.org/licenses/gpl-3.0.html"
+          }
+        }
+        developers {
+          developer {
+            id = "yingxingsilver"
+            name = "YingXingSilver"
+            email = "1@rainmc.top"
+          }
+        }
+        scm {
+          connection = "scm:git:github.com/yingxingsilver/ExamplePlugin.git"
+          developerConnection = "scm:git:ssh://github.com/yingxingsilver/ExamplePlugin.git"
+          url = "https://github.com/yingxingsilver/ExamplePlugin"
+        }
+      }
+    }
+  }
+
+  repositories {
+
+
+    // 🚀 方案 B：发布到 GitHub Packages（生产推荐）
+    maven {
+      name = "GitHubPackages"
+      url = uri("https://maven.pkg.github.com/yingxingsilver/ExamplePlugin") // 替换为你的仓库
+      credentials {
+        username = System.getenv("GITHUB_ACTOR") ?: "yingxingsilver"
+        password = System.getenv("GITHUB_TOKEN") ?: "" // 必须在 CI 中设置 secrets.GITHUB_TOKEN
+      }
+    }
+  }
+} 
