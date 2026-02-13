@@ -59,7 +59,7 @@ bukkitPluginYaml {
   load = BukkitPluginYaml.PluginLoadOrder.STARTUP
   authors.add("Author")
   apiVersion = "1.21.10"
-
+}
 
 
 
